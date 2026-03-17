@@ -2,11 +2,34 @@ import mujoco
 import mujoco.viewer
 import time
 import numpy as np
-import socket, struct
+import socket
 
-send_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) # create a send socket
-recv_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) # create a receive socket
-recv_sock.bind(("127.0.0.1", 40001)) # bind the socket to port 40002
+# UDP
+s_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s_in.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s_in.bind(("127.0.0.1", 5005))
+s_in.setblocking(False)
+
+s_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s_out.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+# dummy send
+s_out.sendto(np.zeros(2).tobytes(), ("127.0.0.1", 5006))
+
+# flush UDP
+while True:
+    try:
+        s_in.recvfrom(1024)
+    except:
+        break
+
+# received values
+ext_pct     = 0.0
+angle       = 0.0
+ext_enabled = True
+rot_enabled = True
+cam         = 0
+height = 0
 
 xml = """
 <mujoco>
@@ -28,15 +51,15 @@ xml = """
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
     <camera name="global_overview" pos="-5 -10 20" mode="targetbodycom" target="crane_gantry"/>
 
-    <body name="turbine_base_body" pos="8 8 0">
+    <body name="turbine_base_body" pos="4 10 0">
       <inertial pos="0 0 0" mass="20000" diaginertia="10000 10000 15000"/>
       <geom type="mesh" mesh="turbine_base" contype="1" conaffinity="1" rgba="1 1 1 1"/>
     </body>
 
     <body name="crane" pos="0 0 0">
       <inertial pos="0 0 0" mass="50000" diaginertia="20000 20000 30000"/>
-      <joint name="crane_base_hinge" type="hinge" axis="0 0 1" damping="1000000" range="-90 90" limited="true"/>
-      <camera name="crane_low_view" pos="0.5 0 10" mode="targetbody" target="payload"/>
+      <joint name="crane_base_hinge" type="hinge" axis="0 0 -1" damping="1000000" range="-90 90" limited="true"/>
+      <camera name="crane_low_view" pos="0.5 1 10" mode="targetbody" target="payload"/>
       <geom type="cylinder" size="0.5 0.5" contype="0" conaffinity="0"/>
       <geom type="mesh" mesh="crane_mesh" pos="0.3 2.2 0" contype="0" conaffinity="0"/>
 
@@ -77,9 +100,8 @@ xml = """
 
 model = mujoco.MjModel.from_xml_string(xml)
 data = mujoco.MjData(model)
-# data.qpos[0] = 0.0
-# data.qpos[1] = 7.0
-
+body_name = "turbine_block_body"
+body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
 
 i = 0
 
@@ -90,19 +112,63 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         i += 1
         step_start = time.time()
         
+        try:
+            info, addr = s_in.recvfrom(1024)
+            packet = np.frombuffer(info, dtype=np.float64)
+            if len(packet) >= 5:
+                ext_pct     = packet[0]
+                angle       = packet[1]
+                ext_enabled = bool(packet[2])
+                rot_enabled = bool(packet[3])
+                cam         = int(packet[4])
+                height      = packet[5]
+        except:
+            pass
+
+        # UDP Out - F
+        force = np.zeros(6)
+        
         # Angle
-        # data.qpos[0] = 0
+        if rot_enabled:
+            data.qpos[0] = angle
         
         # Depth of trolley
-        # data.qpos[1] = 5.5 
+        if ext_enabled:
+            data.qpos[1] = ext_pct*5/100 
         
         # Height
-        # data.ctrl[0] = 0.0
+        data.ctrl[0] = height
+        
+        viewer.cam.fixedcamid = cam
             
         model.opt.wind = [50*np.sin(i/1000), 0, 0]
         
+        for i in range(data.ncon):
+            contact = data.contact[i]
+            
+            # Get the geoms involved in the contact
+            g1 = contact.geom1
+            g2 = contact.geom2
+            
+            # Get the bodies that these geoms belong to
+            b1 = model.geom_bodyid[g1]
+            b2 = model.geom_bodyid[g2]
+            
+            # 3. Check if your target body is involved in this contact
+            if b1 == body_id or b2 == body_id:
+                # Calculate the 6D contact force (3D force, 3D torque)
+                force = np.zeros(6, dtype=np.float64)
+                mujoco.mj_contactForce(model, data, i, force)
+                
+                
+        F = force[:2]
+        print(F)
+        s_out.sendto(F.tobytes(), ("127.0.0.1", 5006))
         
         mujoco.mj_step(model, data)
         viewer.sync()
+        
+    s_in.close()
+    s_out.close()
         
 
