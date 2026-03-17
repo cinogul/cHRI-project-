@@ -65,27 +65,22 @@ class PA:
 
         ##############################################
         for key in keyups:
+            # QUIT
             if key==ord("q"):
                 sys.exit(0)
-            if key == ord('m'):
-                pygame.mouse.set_visible(not pygame.mouse.get_visible())
-            if key == ord('r'):
-                g.show_linkages = not g.show_linkages
 
-            # control flag toggles
-            
+            ## Control Keys 
             # height
-            if key == pygame.K_UP:
-                self.height = min(3.2, self.height + self.height_increment)
             if key == pygame.K_DOWN:
+                self.height = min(3.2, self.height + self.height_increment)
+            if key == pygame.K_UP:
                 self.height = max(0.0, self.height - self.height_increment)
-            
-            # allowed movements
-            if key == pygame.K_KP7 or key == pygame.K_7:
+            # extension
+            if key == pygame.K_KP7 or key == pygame.K_e:
                 self.ext_enabled = not self.ext_enabled
-            if key == pygame.K_KP9 or key == pygame.K_9:
+            # rotation
+            if key == pygame.K_KP9 or key == pygame.K_r:
                 self.rot_enabled = not self.rot_enabled
-            
             # camera view
             if key == pygame.K_KP1 or key == pygame.K_1:
                 self.cam = 0
@@ -102,7 +97,7 @@ class PA:
         ext_pct = np.clip(ext_pct, 0.0, 100.0)
         angle = math.atan2(pos_phys[0], pos_phys[1])  # angle from vertical axis through device base
 
-        # UDP Out - extension %, angle, flags, cam
+        # UDP Out - extension %, angle, flags, cam, height
         packet = np.array([ext_pct, angle, float(self.ext_enabled), float(self.rot_enabled), self.cam, self.height])
         self.s_out.sendto(packet.tobytes(), ("127.0.0.1", 5005))
 
@@ -118,8 +113,8 @@ class PA:
         fe += self.F_feedback * force_feedback_scale
 
         # legend
-        ext_surf    = self.font.render("Extension (KP7) = {}".format("ON" if self.ext_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
-        rot_surf    = self.font.render("Rotation (KP9) = {}".format("ON" if self.rot_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
+        ext_surf    = self.font.render("Extension (E) = {}".format("ON" if self.ext_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
+        rot_surf    = self.font.render("Rotation (R) = {}".format("ON" if self.rot_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
         cam_surf    = self.font.render("Camera View (1/2/3) = {:.0f}".format(self.cam+1), True, (0, 0, 0), (255, 255, 255))
         height_surf = self.font.render("Height (Up/Down) = {:.2f}".format(self.height), True, (0, 0, 0), (255, 255, 255))
         
