@@ -87,11 +87,11 @@ class PA:
                 self.rot_enabled = not self.rot_enabled
             
             # camera view
-            if key == pygame.K_KP1:
+            if key == pygame.K_KP1 or key == pygame.K_1:
                 self.cam = 0
-            if key == pygame.K_KP2:
+            if key == pygame.K_KP2 or key == pygame.K_2:
                 self.cam = 1
-            if key == pygame.K_KP3:
+            if key == pygame.K_KP3 or key == pygame.K_3:
                 self.cam = 2
 
         # physical position and derived metrics
