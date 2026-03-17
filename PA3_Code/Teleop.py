@@ -20,7 +20,7 @@ class PA:
 
         ##############################################
         # UDP
-        self.s_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # extension%, angle, stiffness to environment.py
+        self.s_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # extension%, angle, flags, cam to environment.py
         self.s_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.s_in.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.s_in.bind(("127.0.0.1", 5006))  # F from environment.py
@@ -28,23 +28,23 @@ class PA:
 
         self.F_feedback = np.zeros(2)
 
-        # stiffness state (tele-impedance)
-        self.Ks = np.diag([1000.0, 100.0])
-        self.stiffness_value_increment = 100.0
-        
+        # control flags
+        self.ext_enabled = True   
+        self.rot_enabled = True
+
         # camera view
         self.cam = 0
-        
+
         # crane height
         self.height = 0
-        self.height_increment  = 0.05
+        self.height_increment = 0.05
 
         self.font = pygame.font.Font('freesansbold.ttf', 12)
         self.graphics.show_debug = False
 
         # dummy send
-        self.s_out.sendto(np.zeros(4).tobytes(), ("127.0.0.1", 5005))
-        
+        self.s_out.sendto(np.zeros(5).tobytes(), ("127.0.0.1", 5005))
+
         ##############################################
 
     def run(self):
@@ -72,43 +72,43 @@ class PA:
             if key == ord('r'):
                 g.show_linkages = not g.show_linkages
 
-            # tele-impedance stiffness control
-            if key == pygame.K_RIGHT:
-                self.Ks[0,0] = min(1000.0, self.Ks[0,0] + self.stiffness_value_increment)
-            if key == pygame.K_LEFT:
-                self.Ks[0,0] = max(0.0, self.Ks[0,0] - self.stiffness_value_increment)
+            # control flag toggles
+            
+            # height
             if key == pygame.K_UP:
-                self.Ks[1,1] = min(1000.0, self.Ks[1,1] + self.stiffness_value_increment)
+                self.height = min(3.2, self.height + self.height_increment)
             if key == pygame.K_DOWN:
-                self.Ks[1,1] = max(0.0, self.Ks[1,1] - self.stiffness_value_increment)
+                self.height = max(0.0, self.height - self.height_increment)
+            
+            # allowed movements
+            if key == pygame.K_KP7:
+                self.ext_enabled = not self.ext_enabled
+            if key == pygame.K_KP9:
+                self.rot_enabled = not self.rot_enabled
+            
+            # camera view
             if key == pygame.K_KP1:
                 self.cam = 0
             if key == pygame.K_KP2:
                 self.cam = 1
             if key == pygame.K_KP3:
                 self.cam = 2
-            if key == pygame.K_KP5:
-                self.height = min(3.2, self.height + self.height_increment)
-            if key == pygame.K_KP8:
-                self.height = max(0.0, self.height - self.height_increment)
-                
-            
-            
 
-        # haptic pos -> robot base frame
-        pr = np.array([(xh[0] - xc) / 800,
-                       -(xh[1] - yc) / 800])
+
+        # # haptic pos -> robot base frame
+        # pr = np.array([(xh[0] - xc) / 800,
+        #                -(xh[1] - yc) / 800])
 
         # physical position and derived metrics
         pos_phys = g.inv_convert_pos(xh)
         min_ext = p.l2 - p.l1
-        max_ext = 0.151 # hardcoded max haply extension
+        max_ext = 0.151  # hardcoded max haply extension
         ext_pct = (np.linalg.norm(pos_phys) - min_ext) / (max_ext - min_ext) * 100.0
         ext_pct = np.clip(ext_pct, 0.0, 100.0)
         angle = math.atan2(pos_phys[0], pos_phys[1])  # angle from vertical axis through device base
 
-        # UDP Out - extension %, angle, Ks
-        packet = np.array([ext_pct, angle, self.Ks[0,0], self.Ks[1,1], self.cam])
+        # UDP Out - extension %, angle, flags, cam
+        packet = np.array([ext_pct, angle, float(self.ext_enabled), float(self.rot_enabled), self.cam])
         self.s_out.sendto(packet.tobytes(), ("127.0.0.1", 5005))
 
         # UDP In - F
@@ -122,19 +122,18 @@ class PA:
         force_feedback_scale = -0.05
         fe += self.F_feedback * force_feedback_scale
 
-        # stiffness legend
-        kx_surf = self.font.render("Kx (Left/Right) = {:.0f}".format(self.Ks[0,0]), True, (0, 0, 0), (255, 255, 255))
-        ky_surf = self.font.render("Ky (Up/Down) = {:.0f}".format(self.Ks[1,1]), True, (0, 0, 0), (255, 255, 255))
-        cam_surf = self.font.render("Camera View (1/2/3) = {:.0f}".format(self.cam+1), True, (0, 0, 0), (255, 255, 255))
-        height_surf = self.font.render("Height (8/5) = {:.2f}".format(self.height), True, (0, 0, 0), (255, 255, 255))
-
+        # legend
+        ext_surf    = self.font.render("Extension (KP7) = {}".format("ON" if self.ext_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
+        rot_surf    = self.font.render("Rotation (KP9) = {}".format("ON" if self.rot_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
+        cam_surf    = self.font.render("Camera View (1/2/3) = {:.0f}".format(self.cam+1), True, (0, 0, 0), (255, 255, 255))
+        height_surf = self.font.render("Height (Up/Down) = {:.2f}".format(self.height), True, (0, 0, 0), (255, 255, 255))
         debug_surf = self.font.render("x={:.3f}  y={:.3f}  dist={:.3f}m  ext={:.1f}%  angle={:.2f}rad".format(
-            pr[0], pr[1], np.linalg.norm(pos_phys), ext_pct, angle), True, (0, 0, 0), (255, 255, 255))
-        g.screenHaptics.blit(kx_surf, (10, 10))
-        g.screenHaptics.blit(ky_surf, (10, 25))
-        g.screenHaptics.blit(cam_surf, (10,40))
+            pos_phys[0], pos_phys[1], np.linalg.norm(pos_phys), ext_pct, angle), True, (0, 0, 0), (255, 255, 255))
+        g.screenHaptics.blit(ext_surf,    (10, 10))
+        g.screenHaptics.blit(rot_surf,    (10, 25))
+        g.screenHaptics.blit(cam_surf,    (10, 40))
         g.screenHaptics.blit(height_surf, (10, 55))
-        g.screenHaptics.blit(debug_surf, (10, 70))
+        g.screenHaptics.blit(debug_surf,  (10, 70))
 
         ##############################################
         if self.device_connected:
