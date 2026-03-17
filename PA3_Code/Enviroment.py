@@ -24,10 +24,11 @@ while True:
         break
 
 # received values
-ext_pct = 0.0
-angle   = 0.0
-Kx      = 1000.0
-Ky      = 100.0
+ext_pct     = 0.0
+angle       = 0.0
+ext_enabled = True
+rot_enabled = True
+cam         = 0
 
 # MAIN LOOP
 run = True
@@ -36,19 +37,20 @@ while run:
     try:
         data, addr = s_in.recvfrom(1024)
         packet = np.frombuffer(data, dtype=np.float64)
-        if len(packet) >= 5:
-            ext_pr = packet[0]
-            angle = packet[1]
-            Kx = packet[2]
-            Ky = packet[3]
-            cam = packet[4]
-            height = packet[5]
+        if len(packet) >= 6:
+            ext_pct     = packet[0]
+            angle       = packet[1]
+            ext_enabled = bool(packet[2])
+            rot_enabled = bool(packet[3])
+            cam         = int(packet[4])
+            height      = packet[5]
     except:
         pass
 
     # UDP Out - F
     F = np.zeros(2)
     s_out.sendto(F.tobytes(), ("127.0.0.1", 5006))
+
 
 s_in.close()
 s_out.close()
