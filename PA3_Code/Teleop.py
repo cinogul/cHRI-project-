@@ -81,9 +81,9 @@ class PA:
                 self.height = max(0.0, self.height - self.height_increment)
             
             # allowed movements
-            if key == pygame.K_KP7:
+            if key == pygame.K_KP7 or key == pygame.K_7:
                 self.ext_enabled = not self.ext_enabled
-            if key == pygame.K_KP9:
+            if key == pygame.K_KP9 or key == pygame.K_9:
                 self.rot_enabled = not self.rot_enabled
             
             # camera view
