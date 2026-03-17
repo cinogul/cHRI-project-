@@ -7,14 +7,14 @@ import socket
 # UDP
 s_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s_in.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s_in.bind(("127.0.0.1", 5005))
+s_in.bind(("127.0.0.1", 50005))
 s_in.setblocking(False)
 
 s_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s_out.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 # dummy send
-s_out.sendto(np.zeros(2).tobytes(), ("127.0.0.1", 5006))
+s_out.sendto(np.zeros(2).tobytes(), ("127.0.0.1", 50006))
 
 # flush UDP
 while True:
@@ -103,19 +103,19 @@ data = mujoco.MjData(model)
 body_name = "turbine_block_body"
 body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
 
-i = 0
+j = 0
 
 with mujoco.viewer.launch_passive(model, data) as viewer:
     viewer.cam.fixedcamid = 0
     viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
     while viewer.is_running():
-        i += 1
+        j += 1
         step_start = time.time()
         
         try:
             info, addr = s_in.recvfrom(1024)
             packet = np.frombuffer(info, dtype=np.float64)
-            if len(packet) >= 5:
+            if len(packet) >= 6:
                 ext_pct     = packet[0]
                 angle       = packet[1]
                 ext_enabled = bool(packet[2])
@@ -141,7 +141,8 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         
         viewer.cam.fixedcamid = cam
             
-        model.opt.wind = [50*np.sin(i/1000), 0, 0]
+        model.opt.wind = [50*np.sin(j/1000), 0, 0]
+        F = np.zeros(2)
         
         for i in range(data.ncon):
             contact = data.contact[i]
@@ -159,11 +160,14 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
                 # Calculate the 6D contact force (3D force, 3D torque)
                 force = np.zeros(6, dtype=np.float64)
                 mujoco.mj_contactForce(model, data, i, force)
-                
-                
-        F = force[:2]
-        print(F)
-        s_out.sendto(F.tobytes(), ("127.0.0.1", 5006))
+                frame = contact.frame.reshape(3, 3)
+                force_world = frame.T @ force[:3]
+                F = force_world[:2]/100
+            else:
+                pass
+            if j % 5 == 0:
+                print(j)
+                s_out.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50006))
         
         mujoco.mj_step(model, data)
         viewer.sync()
