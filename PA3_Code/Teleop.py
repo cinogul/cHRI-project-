@@ -23,7 +23,7 @@ class PA:
         self.s_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # extension%, angle, flags, cam to environment.py
         self.s_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.s_in.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.s_in.bind(("127.0.0.1", 5006))  # F from environment.py
+        self.s_in.bind(("127.0.0.1", 50006))  # F from environment.py
         self.s_in.setblocking(False)
 
         self.F_feedback = np.zeros(2)
@@ -41,13 +41,15 @@ class PA:
 
         self.font = pygame.font.Font('freesansbold.ttf', 12)
         self.graphics.show_debug = False
+        self.prev_xh = 0
 
         # dummy send
-        self.s_out.sendto(np.zeros(5).tobytes(), ("127.0.0.1", 5005))
+        self.s_out.sendto(np.zeros(5).tobytes(), ("127.0.0.1", 50005))
 
         ##############################################
 
     def run(self):
+        self.F_feedback = np.zeros(2)
         p = self.physics
         g = self.graphics
         keyups,xm = g.get_events()
@@ -99,7 +101,15 @@ class PA:
 
         # UDP Out - extension %, angle, flags, cam, height
         packet = np.array([ext_pct, angle, float(self.ext_enabled), float(self.rot_enabled), self.cam, self.height])
-        self.s_out.sendto(packet.tobytes(), ("127.0.0.1", 5005))
+        self.s_out.sendto(packet.tobytes(), ("127.0.0.1", 50005))
+        
+        dt = 1.0 / g.FPS
+        vel = (xh - self.prev_xh) / (dt*g.window_scale)
+        g.debug_text += f"vel: [{vel[0]:.4f},{vel[1]:.4f}]"
+        self.prev_xh = xh
+        
+        b = 2.5
+        damp_force = -b*vel * np.array([-1, -1])
 
         # UDP In - F
         try:
@@ -107,11 +117,15 @@ class PA:
             self.F_feedback = np.frombuffer(data, dtype=np.float64)
         except:
             pass
+        
 
         # scaled force feedback
-        force_feedback_scale = -0.05
-        fe += self.F_feedback * force_feedback_scale
-
+        force_feedback_scale = 0.01
+        fe = self.F_feedback * force_feedback_scale + damp_force
+        print(fe)
+        # self.F_feedback
+        
+        
         # legend
         ext_surf    = self.font.render("Extension (E) = {}".format("ON" if self.ext_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
         rot_surf    = self.font.render("Rotation (R) = {}".format("ON" if self.rot_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
@@ -130,7 +144,7 @@ class PA:
 
         ##############################################
         if self.device_connected:
-            fe_device = fe * np.array([-1, -1])
+            fe_device = fe * np.array([1, -1])
             p.update_force(fe_device)
         else:
             xh = g.sim_forces(xh, -fe, xm, mouse_k=0.5, mouse_b=0.8)
