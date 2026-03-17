@@ -2,6 +2,11 @@ import mujoco
 import mujoco.viewer
 import time
 import numpy as np
+import socket, struct
+
+send_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) # create a send socket
+recv_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) # create a receive socket
+recv_sock.bind(("127.0.0.1", 40001)) # bind the socket to port 40002
 
 xml = """
 <mujoco>
@@ -20,7 +25,7 @@ xml = """
   <worldbody>
     <light pos="0 0 10" dir="0 0 -1" directional="true"/>
     
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" contype="0" conaffinity="0"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
     <camera name="global_overview" pos="-5 -10 20" mode="targetbodycom" target="crane_gantry"/>
 
     <body name="turbine_base_body" pos="8 8 0">
@@ -30,14 +35,14 @@ xml = """
 
     <body name="crane" pos="0 0 0">
       <inertial pos="0 0 0" mass="50000" diaginertia="20000 20000 30000"/>
-      <joint name="crane_base_hinge" type="hinge" axis="0 0 1" damping="1000000"/>
+      <joint name="crane_base_hinge" type="hinge" axis="0 0 1" damping="1000000" range="-90 90" limited="true"/>
       <camera name="crane_low_view" pos="0.5 0 10" mode="targetbody" target="payload"/>
       <geom type="cylinder" size="0.5 0.5" contype="0" conaffinity="0"/>
       <geom type="mesh" mesh="crane_mesh" pos="0.3 2.2 0" contype="0" conaffinity="0"/>
 
-      <body name="crane_gantry" pos="0 7 8.2">
+      <body name="crane_gantry" pos="0 2 8.2">
         <inertial pos="0 0 0" mass="5000" diaginertia="500 500 500"/>
-        <joint name="trolley_slide" type="slide" axis="0 -1 0" range="0.0 5.0" limited="true" damping="5000"/>
+        <joint name="trolley_slide" type="slide" axis="0 1 0" range="0.0 5.0" limited="true" damping="5000"/>
         <geom type="box" size="0.15 0.15 0.05" contype="0" conaffinity="0"/>
 
         <body name="payload" pos="0 0 -5">
@@ -86,7 +91,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         step_start = time.time()
         
         # Angle
-        # data.qpos[0] = np.sin(i/100)
+        # data.qpos[0] = 0
         
         # Depth of trolley
         # data.qpos[1] = 5.5 
@@ -95,6 +100,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         # data.ctrl[0] = 0.0
             
         model.opt.wind = [50*np.sin(i/1000), 0, 0]
+        
         
         mujoco.mj_step(model, data)
         viewer.sync()
