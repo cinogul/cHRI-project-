@@ -94,11 +94,6 @@ class PA:
             if key == pygame.K_KP3:
                 self.cam = 2
 
-
-        # # haptic pos -> robot base frame
-        # pr = np.array([(xh[0] - xc) / 800,
-        #                -(xh[1] - yc) / 800])
-
         # physical position and derived metrics
         pos_phys = g.inv_convert_pos(xh)
         min_ext = p.l2 - p.l1
@@ -108,7 +103,7 @@ class PA:
         angle = math.atan2(pos_phys[0], pos_phys[1])  # angle from vertical axis through device base
 
         # UDP Out - extension %, angle, flags, cam
-        packet = np.array([ext_pct, angle, float(self.ext_enabled), float(self.rot_enabled), self.cam])
+        packet = np.array([ext_pct, angle, float(self.ext_enabled), float(self.rot_enabled), self.cam, self.height])
         self.s_out.sendto(packet.tobytes(), ("127.0.0.1", 5005))
 
         # UDP In - F
@@ -127,13 +122,16 @@ class PA:
         rot_surf    = self.font.render("Rotation (KP9) = {}".format("ON" if self.rot_enabled else "OFF"), True, (0, 0, 0), (255, 255, 255))
         cam_surf    = self.font.render("Camera View (1/2/3) = {:.0f}".format(self.cam+1), True, (0, 0, 0), (255, 255, 255))
         height_surf = self.font.render("Height (Up/Down) = {:.2f}".format(self.height), True, (0, 0, 0), (255, 255, 255))
-        debug_surf = self.font.render("x={:.3f}  y={:.3f}  dist={:.3f}m  ext={:.1f}%  angle={:.2f}rad".format(
-            pos_phys[0], pos_phys[1], np.linalg.norm(pos_phys), ext_pct, angle), True, (0, 0, 0), (255, 255, 255))
+        
         g.screenHaptics.blit(ext_surf,    (10, 10))
         g.screenHaptics.blit(rot_surf,    (10, 25))
         g.screenHaptics.blit(cam_surf,    (10, 40))
         g.screenHaptics.blit(height_surf, (10, 55))
-        g.screenHaptics.blit(debug_surf,  (10, 70))
+        
+        # Debug
+        debug_surf = self.font.render("x={:.3f}  y={:.3f}  dist={:.3f}m  ext={:.1f}%  angle={:.2f}rad".format(
+            pos_phys[0], pos_phys[1], np.linalg.norm(pos_phys), ext_pct, angle), True, (0, 0, 0), (255, 255, 255))
+        g.screenHaptics.blit(debug_surf,  (450, 10))
 
         ##############################################
         if self.device_connected:
