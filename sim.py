@@ -1,5 +1,6 @@
 import mujoco
 import mujoco.viewer
+import math
 import time
 import numpy as np
 import socket
@@ -13,8 +14,12 @@ s_in.setblocking(False)
 s_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s_out.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
+s_out2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s_out2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
 # dummy send
 s_out.sendto(np.zeros(2).tobytes(), ("127.0.0.1", 50006))
+s_out2.sendto(np.zeros(2).tobytes(), ("127.0.0.1", 50007))
 
 # flush UDP
 while True:
@@ -29,7 +34,25 @@ angle       = 0.0
 ext_enabled = True
 rot_enabled = True
 cam         = 0
-height = 0
+height      = 0
+force_world = np.zeros(3)
+
+# wind assistance parameters
+C       = 9
+scaling = 1 / 35
+
+def get_assistance_force(wind_vec):
+    wx, wy = wind_vec[0], wind_vec[1]
+    wind_speed = math.sqrt(wx**2 + wy**2)
+    if wind_speed == 0:
+        return np.zeros(2)
+    wind_dir  = math.degrees(math.atan2(wy, wx))
+    magnitude = C * (wind_speed ** 2)
+    F_ax = -magnitude * math.cos(math.radians(wind_dir)) * scaling
+    F_ay = -magnitude * math.sin(math.radians(wind_dir)) * scaling
+    if math.sqrt(F_ax**2 + F_ay**2) > 4:
+        return np.array([F_ax, F_ay])
+    return np.zeros(2)
 
 xml = """
 <mujoco>
@@ -90,18 +113,14 @@ xml = """
 
 
 </mujoco>
-
-
-
-
 """
 
-
-
-model = mujoco.MjModel.from_xml_string(xml)
-data = mujoco.MjData(model)
+model   = mujoco.MjModel.from_xml_string(xml)
+data    = mujoco.MjData(model)
 body_name = "turbine_block_body"
-body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+body_id   = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+base_name = "turbine_base_body"
+base_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, base_name)
 
 j = 0
 
@@ -111,7 +130,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     while viewer.is_running():
         j += 1
         step_start = time.time()
-        
+
         try:
             info, addr = s_in.recvfrom(1024)
             packet = np.frombuffer(info, dtype=np.float64)
@@ -125,54 +144,55 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         except:
             pass
 
-        # UDP Out - F
-        force = np.zeros(6)
-        
-        # Angle
+        # crane angle
         if rot_enabled:
             data.qpos[0] = angle
-        
-        # Depth of trolley
+
+        # trolley depth
         if ext_enabled:
-            data.qpos[1] = ext_pct*5/100 
-        
-        # Height
+            data.qpos[1] = ext_pct * 5 / 100
+
+        # block height
         data.ctrl[0] = height
-        
+
         viewer.cam.fixedcamid = cam
-            
-        model.opt.wind = [50*np.sin(j/1000), 0, 0]
-        F = np.zeros(2)
-        
+
+        model.opt.wind = [30 * np.sin(j / 1000), 0, 0]
+
+        # contact force
+        F = np.zeros(2)        
         for i in range(data.ncon):
             contact = data.contact[i]
-            
-            # Get the geoms involved in the contact
             g1 = contact.geom1
             g2 = contact.geom2
-            
-            # Get the bodies that these geoms belong to
             b1 = model.geom_bodyid[g1]
             b2 = model.geom_bodyid[g2]
-            
-            # 3. Check if your target body is involved in this contact
             if b1 == body_id or b2 == body_id:
-                # Calculate the 6D contact force (3D force, 3D torque)
-                force = np.zeros(6, dtype=np.float64)
-                mujoco.mj_contactForce(model, data, i, force)
+                cf = np.zeros(6, dtype=np.float64)
+                mujoco.mj_contactForce(model, data, i, cf)
                 frame = contact.frame.reshape(3, 3)
-                force_world = frame.T @ force[:3]
-                F = force_world[:2]/100
-            else:
-                pass
+                force_world = frame.T @ cf[:3]
+                F = force_world[:2] / 200
+    
             if j % 5 == 0:
-                print(j)
                 s_out.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50006))
-        
+        F += get_assistance_force(model.opt.wind)
+
+        if data.ncon == 0:
+            if j % 5 == 0:
+                s_out2.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50007))
+                
+        diff = data.xpos[body_id][:2] - np.array([2.5, 3.5])
+        aligned = abs(diff[0]) < 0.05 and abs(diff[1]) < 0.05
+        if force_world[2] > 3000 and aligned:
+            F = np.zeros(2)
+            s_out.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50006))
+            break
+
         mujoco.mj_step(model, data)
         viewer.sync()
         
+
     s_in.close()
     s_out.close()
-        
-
+    s_out2.close()
