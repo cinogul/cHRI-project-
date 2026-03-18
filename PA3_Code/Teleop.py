@@ -25,8 +25,15 @@ class PA:
         self.s_in.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.s_in.bind(("127.0.0.1", 50006))  # F from environment.py
         self.s_in.setblocking(False)
+        
+        self.s_in2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.s_in2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.s_in2.bind(("127.0.0.1", 50007))
+        self.s_in2.setblocking(False)
+        
 
         self.F_feedback = np.zeros(2)
+        self.F_wind = np.zeros(2)
 
         # control flags
         self.ext_enabled = True   
@@ -50,6 +57,7 @@ class PA:
 
     def run(self):
         self.F_feedback = np.zeros(2)
+        self.F_wind = np.zeros(2)
         p = self.physics
         g = self.graphics
         keyups,xm = g.get_events()
@@ -117,12 +125,16 @@ class PA:
             self.F_feedback = np.frombuffer(data, dtype=np.float64)
         except:
             pass
+        try:
+            data2, addr2 = self.s_in2.recvfrom(1024)
+            self.F_wind = np.frombuffer(data2, dtype=np.float64)
+        except:
+            pass
         
 
         # scaled force feedback
         force_feedback_scale = 0.01
-        fe = self.F_feedback * force_feedback_scale + damp_force
-        print(fe)
+        fe = self.F_feedback * force_feedback_scale + damp_force + self.F_wind*force_feedback_scale
         # self.F_feedback
         
         
@@ -156,6 +168,7 @@ class PA:
     def close(self):
         ##############################################
         self.s_in.close()
+        self.s_in2.close()
         self.s_out.close()
         ##############################################
         self.graphics.close()
