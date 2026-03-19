@@ -184,7 +184,6 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
                 s_out2.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50007))
                 
         diff = data.xpos[body_id][:2] - np.array([4.0, 4.0])
-        print(data.xpos[body_id][2], data.xpos[base_id][2])
         aligned = abs(diff[0]) < 0.2 and abs(diff[1]) < 0.2
         if force_world[2] > 3000 and aligned:
             F = np.zeros(2)
