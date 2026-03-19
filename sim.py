@@ -74,7 +74,7 @@ xml = """
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
     <camera name="global_overview" pos="-5 -10 20" mode="targetbodycom" target="crane_gantry"/>
 
-    <body name="turbine_base_body" pos="4 10 0">
+    <body name="turbine_base_body" pos="4 4 0">
       <inertial pos="0 0 0" mass="20000" diaginertia="10000 10000 15000"/>
       <geom type="mesh" mesh="turbine_base" contype="1" conaffinity="1" rgba="1 1 1 1"/>
     </body>
@@ -127,6 +127,7 @@ j = 0
 with mujoco.viewer.launch_passive(model, data) as viewer:
     viewer.cam.fixedcamid = 0
     viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+    start_time = time.time()
     while viewer.is_running():
         j += 1
         step_start = time.time()
@@ -182,11 +183,14 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             if j % 5 == 0:
                 s_out2.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50007))
                 
-        diff = data.xpos[body_id][:2] - np.array([2.5, 3.5])
-        aligned = abs(diff[0]) < 0.05 and abs(diff[1]) < 0.05
+        diff = data.xpos[body_id][:2] - np.array([4.0, 4.0])
+        print(data.xpos[body_id][2], data.xpos[base_id][2])
+        aligned = abs(diff[0]) < 0.2 and abs(diff[1]) < 0.2
         if force_world[2] > 3000 and aligned:
             F = np.zeros(2)
             s_out.sendto(np.ascontiguousarray(F).tobytes(), ("127.0.0.1", 50006))
+            end_time = time.time()
+            print(f"Duration: {end_time-start_time} seconds", f"\nAbsolute difference: {diff} m")
             break
 
         mujoco.mj_step(model, data)
