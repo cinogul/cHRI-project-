@@ -34,7 +34,7 @@ angle       = 0.0
 ext_enabled = True
 rot_enabled = True
 cam         = 0
-height      = 0
+height      = 1.5
 force_world = np.zeros(3)
 
 # wind assistance parameters
