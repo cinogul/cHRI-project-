@@ -43,7 +43,7 @@ class PA:
         self.cam = 0
 
         # crane height
-        self.height = 0
+        self.height = 1.5
         self.height_increment = 0.05
 
         self.font = pygame.font.Font('freesansbold.ttf', 12)
